@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Family Recipes</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      background: #fdf6ee;
+      color: #2c2c2c;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #c0392b;
+      color: white;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    header h1 { font-size: 1.5rem; }
+
+    button {
+      cursor: pointer;
+      border: none;
+      border-radius: 6px;
+      padding: 0.5rem 1rem;
+      font-size: 0.9rem;
+      font-family: inherit;
+    }
+
+    #btn-add {
+      background: white;
+      color: #c0392b;
+      font-weight: 600;
+    }
+    #btn-add:hover { background: #f5e6e6; }
+
+    /* Recipe grid */
+    #recipe-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1.25rem;
+      padding: 2rem;
+    }
+
+    .recipe-card {
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .recipe-card h2 {
+      font-size: 1.1rem;
+      color: #c0392b;
+    }
+
+    .recipe-meta {
+      display: flex;
+      gap: 1rem;
+      font-size: 0.85rem;
+      color: #666;
+    }
+
+    .recipe-meta span { display: flex; align-items: center; gap: 0.25rem; }
+
+    .ingredients-section {
+      margin-top: 0.25rem;
+    }
+
+    .ingredients-toggle {
+      background: none;
+      border: none;
+      color: #c0392b;
+      font-size: 0.82rem;
+      padding: 0;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+
+    .ingredients-list {
+      margin-top: 0.4rem;
+      padding-left: 1.2rem;
+      font-size: 0.85rem;
+      color: #444;
+      line-height: 1.6;
+    }
+
+    .card-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: auto;
+      padding-top: 0.75rem;
+    }
+
+    .btn-edit {
+      background: #f0f0f0;
+      color: #333;
+      flex: 1;
+    }
+    .btn-edit:hover { background: #e0e0e0; }
+
+    .btn-delete {
+      background: #fde8e8;
+      color: #c0392b;
+      flex: 1;
+    }
+    .btn-delete:hover { background: #f5c6c6; }
+
+    /* Empty state */
+    #empty-state {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 4rem 2rem;
+      color: #999;
+    }
+    #empty-state p { font-size: 1rem; margin-top: 0.5rem; }
+
+    /* Modal */
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      z-index: 100;
+      justify-content: center;
+      align-items: center;
+    }
+    #modal-overlay.open { display: flex; }
+
+    #modal {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      width: min(480px, 95vw);
+      max-height: 90vh;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    #modal h2 { font-size: 1.2rem; color: #c0392b; }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    label { font-size: 0.85rem; font-weight: 600; color: #555; }
+
+    input, textarea {
+      padding: 0.55rem 0.75rem;
+      border: 1.5px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+    input:focus, textarea:focus {
+      outline: none;
+      border-color: #c0392b;
+    }
+
+    textarea { resize: vertical; min-height: 80px; }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+
+    #btn-cancel { background: #f0f0f0; color: #333; }
+    #btn-cancel:hover { background: #e0e0e0; }
+
+    #btn-save { background: #c0392b; color: white; font-weight: 600; }
+    #btn-save:hover { background: #a93226; }
+
+    .error-msg {
+      font-size: 0.8rem;
+      color: #c0392b;
+      display: none;
+    }
+    .error-msg.visible { display: block; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🍽️ Family Recipes</h1>
+  <button id="btn-add">+ Add Recipe</button>
+</header>
+
+<main id="recipe-list"></main>
+
+<!-- Modal -->
+<div id="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <div id="modal">
+    <h2 id="modal-title">Add Recipe</h2>
+
+    <div class="form-group">
+      <label for="input-name">Recipe Name *</label>
+      <input type="text" id="input-name" placeholder="e.g. Spaghetti Bolognese" maxlength="80" />
+      <span class="error-msg" id="err-name">Name is required.</span>
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label for="input-cost">Cost ($) *</label>
+        <input type="number" id="input-cost" placeholder="e.g. 12.50" min="0" step="0.01" />
+        <span class="error-msg" id="err-cost">Enter a valid cost.</span>
+      </div>
+      <div class="form-group">
+        <label for="input-servings">Servings *</label>
+        <input type="number" id="input-servings" placeholder="e.g. 4" min="1" step="1" />
+        <span class="error-msg" id="err-servings">Enter a valid number.</span>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label for="input-ingredients">Ingredients (optional)</label>
+      <textarea id="input-ingredients" placeholder="One ingredient per line&#10;e.g.&#10;500g ground beef&#10;1 onion&#10;2 garlic cloves"></textarea>
+    </div>
+
+    <div class="modal-actions">
+      <button id="btn-cancel">Cancel</button>
+      <button id="btn-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const STORAGE_KEY = 'family_recipes';
+
+  // --- State ---
+  let recipes = load();
+  let editingId = null;
+
+  // --- DOM refs ---
+  const list        = document.getElementById('recipe-list');
+  const overlay     = document.getElementById('modal-overlay');
+  const modalTitle  = document.getElementById('modal-title');
+  const inputName   = document.getElementById('input-name');
+  const inputCost   = document.getElementById('input-cost');
+  const inputServings = document.getElementById('input-servings');
+  const inputIngredients = document.getElementById('input-ingredients');
+  const btnAdd      = document.getElementById('btn-add');
+  const btnCancel   = document.getElementById('btn-cancel');
+  const btnSave     = document.getElementById('btn-save');
+  const errName     = document.getElementById('err-name');
+  const errCost     = document.getElementById('err-cost');
+  const errServings = document.getElementById('err-servings');
+
+  // --- Storage ---
+  function load() {
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
+    } catch { return []; }
+  }
+
+  function save() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
+  }
+
+  function uid() {
+    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  }
+
+  // --- Render ---
+  function render() {
+    list.innerHTML = '';
+
+    if (recipes.length === 0) {
+      list.innerHTML = `
+        <div id="empty-state">
+          <strong>No recipes yet!</strong>
+          <p>Click "+ Add Recipe" to get started.</p>
+        </div>`;
+      return;
+    }
+
+    recipes.forEach(recipe => {
+      const card = document.createElement('div');
+      card.className = 'recipe-card';
+
+      const hasIngredients = recipe.ingredients && recipe.ingredients.length > 0;
+      const ingredientsId = `ing-${recipe.id}`;
+
+      card.innerHTML = `
+        <h2>${escHtml(recipe.name)}</h2>
+        <div class="recipe-meta">
+          <span>💰 $${parseFloat(recipe.cost).toFixed(2)}</span>
+          <span>🍽️ ${recipe.servings} serving${recipe.servings !== 1 ? 's' : ''}</span>
+        </div>
+        ${hasIngredients ? `
+        <div class="ingredients-section">
+          <button class="ingredients-toggle" aria-expanded="false" aria-controls="${ingredientsId}"
+            onclick="toggleIngredients(this, '${ingredientsId}')">Show ingredients</button>
+          <ul class="ingredients-list" id="${ingredientsId}" hidden>
+            ${recipe.ingredients.map(i => `<li>${escHtml(i)}</li>`).join('')}
+          </ul>
+        </div>` : ''}
+        <div class="card-actions">
+          <button class="btn-edit" onclick="openEdit('${recipe.id}')">Edit</button>
+          <button class="btn-delete" onclick="deleteRecipe('${recipe.id}')">Delete</button>
+        </div>`;
+
+      list.appendChild(card);
+    });
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function toggleIngredients(btn, listId) {
+    const ul = document.getElementById(listId);
+    const expanded = btn.getAttribute('aria-expanded') === 'true';
+    ul.hidden = expanded;
+    btn.setAttribute('aria-expanded', String(!expanded));
+    btn.textContent = expanded ? 'Show ingredients' : 'Hide ingredients';
+  }
+
+  // --- Modal ---
+  function openAdd() {
+    editingId = null;
+    modalTitle.textContent = 'Add Recipe';
+    inputName.value = '';
+    inputCost.value = '';
+    inputServings.value = '';
+    inputIngredients.value = '';
+    clearErrors();
+    overlay.classList.add('open');
+    inputName.focus();
+  }
+
+  function openEdit(id) {
+    const recipe = recipes.find(r => r.id === id);
+    if (!recipe) return;
+    editingId = id;
+    modalTitle.textContent = 'Edit Recipe';
+    inputName.value = recipe.name;
+    inputCost.value = recipe.cost;
+    inputServings.value = recipe.servings;
+    inputIngredients.value = recipe.ingredients ? recipe.ingredients.join('\n') : '';
+    clearErrors();
+    overlay.classList.add('open');
+    inputName.focus();
+  }
+
+  function closeModal() {
+    overlay.classList.remove('open');
+    editingId = null;
+  }
+
+  function clearErrors() {
+    [errName, errCost, errServings].forEach(e => e.classList.remove('visible'));
+  }
+
+  function validate() {
+    let ok = true;
+    if (!inputName.value.trim()) {
+      errName.classList.add('visible'); ok = false;
+    }
+    const cost = parseFloat(inputCost.value);
+    if (isNaN(cost) || cost < 0) {
+      errCost.classList.add('visible'); ok = false;
+    }
+    const servings = parseInt(inputServings.value, 10);
+    if (isNaN(servings) || servings < 1) {
+      errServings.classList.add('visible'); ok = false;
+    }
+    return ok;
+  }
+
+  function saveRecipe() {
+    clearErrors();
+    if (!validate()) return;
+
+    const name = inputName.value.trim();
+    const cost = parseFloat(inputCost.value);
+    const servings = parseInt(inputServings.value, 10);
+    const ingredients = inputIngredients.value
+      .split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 0);
+
+    if (editingId) {
+      const idx = recipes.findIndex(r => r.id === editingId);
+      if (idx !== -1) {
+        recipes[idx] = { id: editingId, name, cost, servings, ingredients };
+      }
+    } else {
+      recipes.push({ id: uid(), name, cost, servings, ingredients });
+    }
+
+    save();
+    render();
+    closeModal();
+  }
+
+  function deleteRecipe(id) {
+    if (!confirm('Delete this recipe?')) return;
+    recipes = recipes.filter(r => r.id !== id);
+    save();
+    render();
+  }
+
+  // --- Events ---
+  btnAdd.addEventListener('click', openAdd);
+  btnCancel.addEventListener('click', closeModal);
+  btnSave.addEventListener('click', saveRecipe);
+
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) closeModal();
+  });
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+  });
+
+  // --- Init ---
+  render();
+</script>
+</body>
+</html>
