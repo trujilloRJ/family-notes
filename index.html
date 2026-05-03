@@ -247,10 +247,10 @@
 </div>
 
 <script>
-  const STORAGE_KEY = 'family_recipes';
+  const API = '/api/recipes';
 
   // --- State ---
-  let recipes = load();
+  let recipes = [];
   let editingId = null;
 
   // --- DOM refs ---
@@ -268,19 +268,12 @@
   const errCost     = document.getElementById('err-cost');
   const errServings = document.getElementById('err-servings');
 
-  // --- Storage ---
-  function load() {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-    } catch { return []; }
-  }
-
-  function save() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(recipes));
-  }
-
-  function uid() {
-    return Date.now().toString(36) + Math.random().toString(36).slice(2);
+  // --- API ---
+  async function apiFetch(url, options = {}) {
+    const res = await fetch(url, options);
+    if (res.status === 204) return null;
+    if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+    return res.json();
   }
 
   // --- Render ---
@@ -394,37 +387,52 @@
     return ok;
   }
 
-  function saveRecipe() {
+  async function saveRecipe() {
     clearErrors();
     if (!validate()) return;
 
-    const name = inputName.value.trim();
-    const cost = parseFloat(inputCost.value);
-    const servings = parseInt(inputServings.value, 10);
-    const ingredients = inputIngredients.value
-      .split('\n')
-      .map(l => l.trim())
-      .filter(l => l.length > 0);
+    const data = {
+      name: inputName.value.trim(),
+      cost: parseFloat(inputCost.value),
+      servings: parseInt(inputServings.value, 10),
+      ingredients: inputIngredients.value.split('\n').map(l => l.trim()).filter(Boolean),
+    };
 
-    if (editingId) {
-      const idx = recipes.findIndex(r => r.id === editingId);
-      if (idx !== -1) {
-        recipes[idx] = { id: editingId, name, cost, servings, ingredients };
+    btnSave.disabled = true;
+    try {
+      if (editingId) {
+        const updated = await apiFetch(`${API}/${editingId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        recipes = recipes.map(r => r.id === editingId ? updated : r);
+      } else {
+        const created = await apiFetch(API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        recipes.push(created);
       }
-    } else {
-      recipes.push({ id: uid(), name, cost, servings, ingredients });
+      render();
+      closeModal();
+    } catch {
+      alert('Something went wrong. Please try again.');
+    } finally {
+      btnSave.disabled = false;
     }
-
-    save();
-    render();
-    closeModal();
   }
 
-  function deleteRecipe(id) {
+  async function deleteRecipe(id) {
     if (!confirm('Delete this recipe?')) return;
-    recipes = recipes.filter(r => r.id !== id);
-    save();
-    render();
+    try {
+      await apiFetch(`${API}/${id}`, { method: 'DELETE' });
+      recipes = recipes.filter(r => r.id !== id);
+      render();
+    } catch {
+      alert('Could not delete. Please try again.');
+    }
   }
 
   // --- Events ---
@@ -441,7 +449,17 @@
   });
 
   // --- Init ---
-  render();
+  async function init() {
+    try {
+      recipes = await apiFetch(API);
+    } catch {
+      list.innerHTML = `<div id="empty-state"><strong>Could not connect to server.</strong><p>Make sure the backend is running.</p></div>`;
+      return;
+    }
+    render();
+  }
+
+  init();
 </script>
 </body>
 </html>
